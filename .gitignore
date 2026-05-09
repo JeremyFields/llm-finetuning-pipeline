@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+uv.lock
+
+# AI/ML Specific
+mlruns/
+results/
+lora_adapter/
+*.bin
+*.pth
+*.onnx
+*.safetensors
+
+# Data (DVC handles this)
+data/sample_dataset.jsonl
+!data/*.dvc
+!data/.gitignore
+
+# OS
+.DS_Store
+.env

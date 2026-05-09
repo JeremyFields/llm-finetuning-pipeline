@@ -1,0 +1,16 @@
+[project]
+name = "llm-finetuning-pipeline"
+version = "0.1.0"
+description = "End-to-end local fine-tuning pipeline using 4-bit LoRA"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "transformers",
+    "peft",
+    "trl",
+    "bitsandbytes",
+    "mlflow",
+    "dvc[s3]",
+    "datasets",
+    "accelerate"
+]
