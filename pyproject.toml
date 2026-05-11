@@ -2,9 +2,10 @@
 name = "llm-finetuning-pipeline"
 version = "0.1.0"
 description = "End-to-end local fine-tuning pipeline using 4-bit LoRA"
-requires-python = ">=3.10"
+requires-python = "==3.12.*"  # This forces uv to use the stable Python 3.12
 dependencies = [
     "torch",
+    "torchvision",
     "transformers",
     "peft",
     "trl",
@@ -14,3 +15,13 @@ dependencies = [
     "datasets",
     "accelerate"
 ]
+
+# This creates a direct pipeline to the NVIDIA/PyTorch GPU Warehouse
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu121" }]
+torchvision = [{ index = "pytorch-cu121" }]
