@@ -83,6 +83,8 @@ Use it to review runs, compare metrics, and inspect logged artifacts.
 
 Example tracking after 1 hour LoRA train:
 
+![alt text](image-2.png)
+
 ![alt text](image-1.png)
 
 ## Notes
