@@ -9,7 +9,7 @@ ADAPTER_DIR = "./lora_adapter"
 print("Loading base model and tokenizer...")
 
 # 2. Load the Tokenizer
-tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID)x
+tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID)
 tokenizer.pad_token = tokenizer.eos_token
 
 # 3. Load the Base Model in 4-bit (Just like training, save VRAM for my local RTX)
@@ -29,7 +29,7 @@ print(f"Attaching LoRA adapter from {ADAPTER_DIR}...")
 model = PeftModel.from_pretrained(base_model, ADAPTER_DIR)
 
 print("\n" + "="*50)
-print("🧠 Model is ready! Type 'exit' to quit.")
+print("Model is ready! Type 'exit' to quit.")
 print("="*50 + "\n")
 
 # 5. Interactive Chat Loop

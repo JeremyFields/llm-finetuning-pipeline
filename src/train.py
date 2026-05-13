@@ -1,6 +1,7 @@
-import  mlflow
+import mlflow
 import torch
 import os
+from textwrap import dedent
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from trl import SFTTrainer, SFTConfig
@@ -17,6 +18,14 @@ data_path = current_dir.parent / "data" / "sample_dataset.jsonl"
 # 1. Connect to your Local MLflow Container
 mlflow.set_tracking_uri("http://localhost:5000")
 mlflow.set_experiment("12gb-gpu-lora-finetuning")
+
+# Longer training and more MLflow stats for a portfolio-friendly run.
+TRAIN_EPOCHS = 5
+EVAL_SPLIT = 0.05
+SAVE_STEPS = 50
+EVAL_STEPS = 50
+LOGGING_STEPS = 10
+WARMUP_STEPS = 30
 
 # 2. Load Model in 4-bit (Crucial for the RTX 3060)
 # We'll use a small, fast model for the proof-of-concept
@@ -51,38 +60,102 @@ peft_config = LoraConfig(
 )
 model = get_peft_model(model, peft_config)
 
-# 4. Load the DVC-Tracked Data
+# 4. Load the data
 dataset = load_dataset("mlabonne/guanaco-llama2-1k", split="train")
+splits = dataset.train_test_split(test_size=EVAL_SPLIT, seed=42)
+train_dataset = splits["train"]
+eval_dataset = splits["test"]
 
 sft_config = SFTConfig(
     output_dir="./results",
     dataset_text_field="text",
     max_length=512,
     per_device_train_batch_size=1,
+    per_device_eval_batch_size=1,
     gradient_accumulation_steps=4, 
     learning_rate=2e-4,
-    logging_steps=5,
-    max_steps=100,
+    warmup_steps=WARMUP_STEPS,
+    lr_scheduler_type="cosine",
+    num_train_epochs=TRAIN_EPOCHS,
+    logging_steps=LOGGING_STEPS,
+    eval_strategy="steps",
+    eval_steps=EVAL_STEPS,
+    save_strategy="steps",
+    save_steps=SAVE_STEPS,
+    save_total_limit=2,
+    load_best_model_at_end=True,
+    metric_for_best_model="eval_loss",
+    greater_is_better=False,
     bf16=True,
     fp16=False,
     optim="paged_adamw_32bit",
     report_to="mlflow",
-    save_strategy="no"
+    gradient_checkpointing=True,
 )
 
 # 6. Initialize Trainer
-trainer = SFTTrainer(
-    model=model,
-    train_dataset=dataset,
-    args=sft_config,
-)
+with mlflow.start_run(run_name=f"lora-qwen2.5-{TRAIN_EPOCHS}epochs"):
+    mlflow.log_params(
+        {
+            "model_id": model_id,
+            "train_epochs": TRAIN_EPOCHS,
+            "train_size": len(train_dataset),
+            "eval_size": len(eval_dataset),
+            "learning_rate": 2e-4,
+            "warmup_steps": WARMUP_STEPS,
+            "max_length": 512,
+            "batch_size": 1,
+            "gradient_accumulation_steps": 4,
+        }
+    )
 
-print(f"CUDA status: {torch.cuda.is_available()}")
-print(f"Model is on: {model.device}")
+    trainer = SFTTrainer(
+        model=model,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        args=sft_config,
+    )
 
-print("Starting training. Watch MLflow at localhost:5000!")
-trainer.train()
+    print(f"CUDA status: {torch.cuda.is_available()}")
+    print(f"Model is on: {model.device}")
 
-# 7. Save the resulting weights
-trainer.model.save_pretrained("lora_adapter")
-print("Pipeline complete. Adapter saved.")
+    print("Starting training. Watch MLflow at localhost:5000!")
+    train_result = trainer.train()
+    eval_result = trainer.evaluate()
+
+    mlflow.log_metrics(
+        {
+            "train_loss": float(train_result.training_loss),
+            "eval_loss": float(eval_result["eval_loss"]),
+        }
+    )
+
+    # 7. Save the resulting weights
+    trainer.model.save_pretrained("lora_adapter")
+    tokenizer.save_pretrained("lora_adapter")
+    mlflow.log_artifacts("lora_adapter", artifact_path="lora_adapter")
+
+    sample_prompt = dedent(
+        """
+        Human: What is MLOps?
+        Assistant:
+        """
+    ).strip()
+    sample_inputs = tokenizer(sample_prompt, return_tensors="pt").to(model.device)
+    sample_outputs = trainer.model.generate(
+        **sample_inputs,
+        max_new_tokens=120,
+        temperature=0.7,
+        pad_token_id=tokenizer.eos_token_id,
+    )
+    sample_response = tokenizer.decode(
+        sample_outputs[0][sample_inputs["input_ids"].shape[1]:],
+        skip_special_tokens=True,
+    ).strip()
+
+    mlflow.log_text(
+        f"Prompt:\n{sample_prompt}\n\nResponse:\n{sample_response}",
+        artifact_file="sample_generation.txt",
+    )
+
+    print("Pipeline complete. Adapter saved and logged to MLflow.")
